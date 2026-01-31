@@ -1,0 +1,21 @@
+//@version=5
+strategy("RSI Mean Reversion", overlay=true)
+
+length = input.int(defval=14, title="RSI Length")
+overbought = input.int(defval=70, title="Overbought Level")
+oversold = input.int(defval=30, title="Oversold Level")
+qty = input.int(defval=1, title="Order Size")
+
+rsiValue = ta.rsi(close, length)
+
+if rsiValue < oversold
+    strategy.entry("Long", strategy.long, qty=qty)
+
+if rsiValue > overbought
+    strategy.entry("Short", strategy.short, qty=qty)
+
+if rsiValue > 50
+    strategy.close("Long")
+
+if rsiValue < 50
+    strategy.close("Short")

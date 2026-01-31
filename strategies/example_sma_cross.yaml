@@ -1,0 +1,30 @@
+name: SMA Crossover
+description: Buy when fast SMA crosses above slow SMA
+
+inputs:
+  fast_period: 9
+  slow_period: 21
+  size: 1
+
+indicators:
+  fast_sma: { type: sma, period: $fast_period }
+  slow_sma: { type: sma, period: $slow_period }
+
+rules:
+  entry_long:
+    condition: crossover(fast_sma, slow_sma)
+    action: buy
+    size: $size
+
+  entry_short:
+    condition: crossunder(fast_sma, slow_sma)
+    action: sell
+    size: $size
+
+  exit_long:
+    condition: crossunder(fast_sma, slow_sma)
+    action: close_long
+
+  exit_short:
+    condition: crossover(fast_sma, slow_sma)
+    action: close_short

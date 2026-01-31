@@ -1,0 +1,15 @@
+# DumbTrader global configuration
+# Environment variables are interpolated from .env or the shell environment.
+
+api:
+  username: ${PROJECT_X_USERNAME}
+  api_key: ${PROJECT_X_API_KEY}
+
+trading:
+  mode: paper          # "paper" or "live"
+  instrument: MNQ
+  timeframe: 1min
+  max_position_size: 2
+
+strategy:
+  file: strategies/example_sma_cross.yaml   # or .pine file

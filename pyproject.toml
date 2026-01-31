@@ -1,0 +1,17 @@
+[project]
+name = "dumbtrader"
+version = "0.1.0"
+description = "Futures trading bot using ProjectX"
+requires-python = ">=3.11"
+dependencies = [
+    "project-x-py",
+    "pyyaml",
+    "python-dotenv",
+]
+
+[project.scripts]
+dumbtrader = "dumbtrader.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
