@@ -54,6 +54,12 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
+    # Force UTF-8 on stdout/stderr so emoji from project-x-py SDK doesn't crash on Windows
+    if sys.platform == "win32":
+        for stream in (sys.stdout, sys.stderr):
+            if hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
