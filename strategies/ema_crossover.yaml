@@ -1,0 +1,33 @@
+name: EMA Crossover
+description: >
+  Trend-following strategy using 8/21 EMA crossover. EMAs react faster than
+  SMAs to recent price changes, making them well-suited for capturing intraday
+  momentum on futures like MNQ.
+
+inputs:
+  fast_period: 8
+  slow_period: 21
+  size: 1
+
+indicators:
+  fast_ema: { type: ema, period: $fast_period }
+  slow_ema: { type: ema, period: $slow_period }
+
+rules:
+  entry_long:
+    condition: crossover(fast_ema, slow_ema)
+    action: buy
+    size: $size
+
+  entry_short:
+    condition: crossunder(fast_ema, slow_ema)
+    action: sell
+    size: $size
+
+  exit_long:
+    condition: crossunder(fast_ema, slow_ema)
+    action: close_long
+
+  exit_short:
+    condition: crossover(fast_ema, slow_ema)
+    action: close_short

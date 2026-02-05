@@ -1,0 +1,24 @@
+//@version=5
+strategy("EMA Crossover", overlay=true, default_qty_type=strategy.fixed, default_qty_value=1)
+
+// --- Inputs ---
+fastLen = input.int(defval=8, title="Fast EMA Length", minval=1)
+slowLen = input.int(defval=21, title="Slow EMA Length", minval=1)
+qty     = input.int(defval=1, title="Order Size", minval=1)
+
+// --- Indicators ---
+fastEma = ta.ema(close, fastLen)
+slowEma = ta.ema(close, slowLen)
+
+// --- Entry / Exit ---
+if ta.crossover(fastEma, slowEma)
+    strategy.entry("Long", strategy.long, qty=qty)
+    strategy.close("Short")
+
+if ta.crossunder(fastEma, slowEma)
+    strategy.entry("Short", strategy.short, qty=qty)
+    strategy.close("Long")
+
+// --- Plot EMAs on chart ---
+plot(fastEma, "Fast EMA", color=color.blue, linewidth=2)
+plot(slowEma, "Slow EMA", color=color.orange, linewidth=2)
