@@ -6,10 +6,10 @@ api:
   api_key: ${PROJECT_X_API_KEY}
 
 trading:
-  mode: paper          # "paper" or "live"
+  mode: live           # "paper" or "live"
   instrument: MNQ
   timeframe: 1min
   max_position_size: 2
 
 strategy:
-  file: strategies/example_sma_cross.yaml   # or .pine file
+  file: strategies/ema_crossover.yaml   # or .pine file

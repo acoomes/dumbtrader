@@ -48,22 +48,26 @@ class Token:
     kind: str
     value: str
     line: int
+    col: int = 0
 
 
 def tokenize(source: str) -> list[Token]:
     tokens: list[Token] = []
     line = 1
+    line_start = 0
     for m in _TOKEN_RE.finditer(source):
         kind = m.lastgroup
         assert kind is not None
         value = m.group()
+        col = m.start() - line_start
         if kind == "NEWLINE":
             line += 1
-            tokens.append(Token("NEWLINE", "\n", line))
+            line_start = m.end()
+            tokens.append(Token("NEWLINE", "\n", line, 0))
             continue
         if kind in ("WS", "COMMENT"):
             continue
-        tokens.append(Token(kind, value, line))
+        tokens.append(Token(kind, value, line, col))
     return tokens
 
 
@@ -184,23 +188,19 @@ class Parser:
         return {"type": "if", "condition": cond, "body": body, "else": else_body}
 
     def _block(self) -> list[dict]:
-        """Parse an indented block (lines starting with spaces)."""
+        """Parse an indented block (lines with col > 0)."""
         stmts: list[dict] = []
         while not self._at_end():
             self._skip_newlines()
             tok = self._peek()
             if tok is None:
                 break
-            # Heuristic: block ends when we hit a keyword at column 0
-            # Since we strip whitespace in the tokenizer we rely on
-            # indentation being removed.  For our subset we just keep
-            # consuming statements until we hit 'else', 'if' at the
-            # top level, or run out.  We use a simple approach: parse
-            # one statement and then check the next token.
+            # Block ends when we hit a token at column 0 (top-level)
+            if tok.col == 0:
+                break
             stmt = self._statement()
             if stmt is not None:
                 stmts.append(stmt)
-            break  # one statement per block line (simplified)
         return stmts
 
     def _expr_statement(self) -> dict:

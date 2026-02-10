@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dumbtrader</title>
+<style>
+  :root {
+    --bg: #0e1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+  }
+  .status-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--red);
+    flex-shrink: 0;
+  }
+  .status-dot.running { background: var(--green); }
+  .status-label {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    align-items: flex-end;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  input, select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    min-width: 160px;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+
+  .btn {
+    padding: 8px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-start { background: var(--green); color: #000; }
+  .btn-stop { background: var(--red); color: #fff; }
+
+  .mode-toggle {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .mode-toggle button {
+    padding: 8px 16px;
+    border: none;
+    background: var(--surface);
+    color: var(--text-muted);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .mode-toggle button.active {
+    background: var(--accent);
+    color: #000;
+    font-weight: 600;
+  }
+
+  /* Metrics */
+  .metrics-wrapper {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .metrics-section-header {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .metrics-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+  }
+  .metric-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .metric-card .label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .metric-card .value {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .metric-card .value.positive { color: var(--green); }
+  .metric-card .value.negative { color: var(--red); }
+
+  /* Log viewer */
+  .log-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0 24px 24px;
+    margin-top: 16px;
+  }
+  .log-header {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .log-header button {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .log-header button:hover { border-color: var(--text-muted); }
+  #log {
+    flex: 1;
+    background: #000;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #c9d1d9;
+    min-height: 300px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>dumbtrader</h1>
+  <div class="status-dot" id="statusDot"></div>
+  <span class="status-label" id="statusLabel">stopped</span>
+</header>
+
+<div class="controls">
+  <div class="field">
+    <label>Contract</label>
+    <select id="instrument">
+      <option value="MNQ" selected>MNQ</option>
+      <option value="NQ">NQ</option>
+      <option value="MYM">MYM</option>
+      <option value="YM">YM</option>
+      <option value="MGC">MGC</option>
+      <option value="GC">GC</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label>Strategy</label>
+    <select id="strategy"></select>
+  </div>
+
+  <div class="field">
+    <label>Mode</label>
+    <div class="mode-toggle">
+      <button id="modePaper" class="active" onclick="setMode('paper')">Paper</button>
+      <button id="modeLive" onclick="setMode('live')">Live</button>
+    </div>
+  </div>
+
+  <button class="btn btn-start" id="startBtn" onclick="startBot()">Start</button>
+  <button class="btn btn-stop" id="stopBtn" onclick="stopBot()" disabled>Stop</button>
+</div>
+
+<div class="metrics-wrapper">
+  <div class="metrics-section">
+    <span class="metrics-section-header">Session</span>
+    <div class="metrics-grid" id="sessionMetrics">
+      <div class="metric-card"><span class="label">Trades</span><span class="value" id="sTotal">0</span></div>
+      <div class="metric-card"><span class="label">Win Rate</span><span class="value" id="sWinRate">0%</span></div>
+      <div class="metric-card"><span class="label">P&amp;L</span><span class="value" id="sPnl">$0.00</span></div>
+      <div class="metric-card"><span class="label">Wins</span><span class="value" id="sWins">0</span></div>
+      <div class="metric-card"><span class="label">Losses</span><span class="value" id="sLosses">0</span></div>
+      <div class="metric-card"><span class="label">Avg Win</span><span class="value" id="sAvgWin">$0.00</span></div>
+      <div class="metric-card"><span class="label">Avg Loss</span><span class="value" id="sAvgLoss">$0.00</span></div>
+      <div class="metric-card"><span class="label">Best</span><span class="value" id="sLargestWin">$0.00</span></div>
+      <div class="metric-card"><span class="label">Worst</span><span class="value" id="sLargestLoss">$0.00</span></div>
+    </div>
+  </div>
+  <div class="metrics-section">
+    <span class="metrics-section-header">All Time</span>
+    <div class="metrics-grid" id="allTimeMetrics">
+      <div class="metric-card"><span class="label">Trades</span><span class="value" id="aTotal">0</span></div>
+      <div class="metric-card"><span class="label">Win Rate</span><span class="value" id="aWinRate">0%</span></div>
+      <div class="metric-card"><span class="label">P&amp;L</span><span class="value" id="aPnl">$0.00</span></div>
+      <div class="metric-card"><span class="label">Wins</span><span class="value" id="aWins">0</span></div>
+      <div class="metric-card"><span class="label">Losses</span><span class="value" id="aLosses">0</span></div>
+      <div class="metric-card"><span class="label">Avg Win</span><span class="value" id="aAvgWin">$0.00</span></div>
+      <div class="metric-card"><span class="label">Avg Loss</span><span class="value" id="aAvgLoss">$0.00</span></div>
+      <div class="metric-card"><span class="label">Best</span><span class="value" id="aLargestWin">$0.00</span></div>
+      <div class="metric-card"><span class="label">Worst</span><span class="value" id="aLargestLoss">$0.00</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="log-container">
+  <div class="log-header">
+    <span>Logs</span>
+    <button onclick="clearLog()">Clear</button>
+  </div>
+  <div id="log"></div>
+</div>
+
+<script>
+  let mode = 'paper';
+  let running = false;
+  let ws = null;
+  let _savedConfig = {};
+
+  const logEl = document.getElementById('log');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const statusDot = document.getElementById('statusDot');
+  const statusLabel = document.getElementById('statusLabel');
+
+  function setMode(m) {
+    mode = m;
+    document.getElementById('modePaper').classList.toggle('active', m === 'paper');
+    document.getElementById('modeLive').classList.toggle('active', m === 'live');
+  }
+
+  function setRunning(r) {
+    running = r;
+    startBtn.disabled = r;
+    stopBtn.disabled = !r;
+    statusDot.classList.toggle('running', r);
+    statusLabel.textContent = r ? 'running' : 'stopped';
+    document.getElementById('instrument').disabled = r;
+    document.getElementById('strategy').disabled = r;
+    document.getElementById('modePaper').disabled = r;
+    document.getElementById('modeLive').disabled = r;
+  }
+
+  function appendLog(line) {
+    logEl.textContent += line + '\n';
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function clearLog() { logEl.textContent = ''; }
+
+  // WebSocket
+  function connectWs() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws/logs`);
+    ws.onmessage = (e) => appendLog(e.data);
+    ws.onclose = () => setTimeout(connectWs, 2000);
+  }
+  connectWs();
+
+  // Load strategies
+  async function loadStrategies() {
+    try {
+      const res = await fetch('/api/strategies');
+      const list = await res.json();
+      const sel = document.getElementById('strategy');
+      sel.innerHTML = '';
+      for (const name of list) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      }
+      // Re-apply saved strategy (pollStatus may have run before dropdown was populated)
+      if (_savedConfig.strategy) sel.value = _savedConfig.strategy;
+    } catch (e) {
+      appendLog('[ui] failed to load strategies: ' + e.message);
+    }
+  }
+  loadStrategies();
+
+  // Poll status on load — restore mode/instrument/strategy from server
+  async function pollStatus() {
+    try {
+      const res = await fetch('/api/status');
+      const data = await res.json();
+      setRunning(data.running);
+      if (data.config && Object.keys(data.config).length > 0) {
+        _savedConfig = data.config;
+        if (data.config.mode) setMode(data.config.mode);
+        if (data.config.instrument) document.getElementById('instrument').value = data.config.instrument;
+        if (data.config.strategy) document.getElementById('strategy').value = data.config.strategy;
+      }
+    } catch {}
+  }
+  pollStatus();
+
+  // Start / Stop
+  async function startBot() {
+    const instrument = document.getElementById('instrument').value.trim();
+    const strategy = document.getElementById('strategy').value;
+    if (!instrument) { appendLog('[ui] enter a contract symbol'); return; }
+    if (!strategy) { appendLog('[ui] select a strategy'); return; }
+
+    if (mode === 'live') {
+      if (!confirm('WARNING: You are about to trade with REAL money. Continue?')) return;
+    }
+
+    startBtn.disabled = true;
+    try {
+      const res = await fetch('/api/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instrument, strategy, mode }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRunning(true);
+      } else {
+        appendLog('[ui] error: ' + data.error);
+        startBtn.disabled = false;
+      }
+    } catch (e) {
+      appendLog('[ui] request failed: ' + e.message);
+      startBtn.disabled = false;
+    }
+  }
+
+  // Metrics polling
+  function pnlClass(v) { return v > 0 ? 'positive' : v < 0 ? 'negative' : ''; }
+  function fmt$(v) { return (v >= 0 ? '$' : '-$') + Math.abs(v).toFixed(2); }
+
+  function applyMetrics(prefix, m) {
+    document.getElementById(prefix + 'Total').textContent = m.total_trades;
+    document.getElementById(prefix + 'WinRate').textContent = m.win_rate + '%';
+    const pnlEl = document.getElementById(prefix + 'Pnl');
+    pnlEl.textContent = fmt$(m.total_pnl);
+    pnlEl.className = 'value ' + pnlClass(m.total_pnl);
+    document.getElementById(prefix + 'Wins').textContent = m.wins;
+    document.getElementById(prefix + 'Losses').textContent = m.losses;
+    document.getElementById(prefix + 'AvgWin').textContent = fmt$(m.avg_win);
+    document.getElementById(prefix + 'AvgLoss').textContent = fmt$(m.avg_loss);
+    document.getElementById(prefix + 'LargestWin').textContent = fmt$(m.largest_win);
+    document.getElementById(prefix + 'LargestLoss').textContent = fmt$(m.largest_loss);
+  }
+
+  async function pollMetrics() {
+    try {
+      const res = await fetch('/api/metrics');
+      const data = await res.json();
+      applyMetrics('s', data.session);
+      applyMetrics('a', data.all_time);
+    } catch {}
+  }
+  pollMetrics();
+  setInterval(pollMetrics, 10000);
+
+  async function stopBot() {
+    stopBtn.disabled = true;
+    try {
+      const res = await fetch('/api/stop', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setRunning(false);
+      } else {
+        appendLog('[ui] error: ' + data.error);
+        stopBtn.disabled = false;
+      }
+    } catch (e) {
+      appendLog('[ui] request failed: ' + e.message);
+      stopBtn.disabled = false;
+    }
+  }
+</script>
+
+</body>
+</html>

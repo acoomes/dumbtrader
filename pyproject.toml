@@ -7,6 +7,9 @@ dependencies = [
     "project-x-py",
     "pyyaml",
     "python-dotenv",
+    "fastapi",
+    "uvicorn[standard]",
+    "aiosqlite",
 ]
 
 [project.scripts]

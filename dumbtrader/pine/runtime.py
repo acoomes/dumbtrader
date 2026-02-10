@@ -27,11 +27,30 @@ class PineRuntime:
     # Public
     # ------------------------------------------------------------------
 
+    # Pine Script built-in constants
+    _BUILTINS: dict[str, Any] = {
+        "strategy.fixed": "fixed",
+        "strategy.percent_of_equity": "percent_of_equity",
+        "strategy.cash": "cash",
+        "strategy.long": "long",
+        "strategy.short": "short",
+        "color.blue": "blue",
+        "color.orange": "orange",
+        "color.red": "red",
+        "color.green": "green",
+        "color.white": "white",
+        "color.black": "black",
+        "color.yellow": "yellow",
+        "color.purple": "purple",
+        "color.aqua": "aqua",
+    }
+
     def evaluate(self, df: pl.DataFrame) -> list[Signal]:
         """Run the full AST against ``df`` and return generated signals."""
         self._df = df
         self.signals = []
         self.variables.clear()
+        self.variables.update(self._BUILTINS)
 
         # Expose built-in series as the last bar's values
         if df.height > 0:
@@ -213,6 +232,10 @@ class PineRuntime:
         if name == "strategy.close":
             return self._strategy_close(pos_args, kw_args)
 
+        # --- No-op display functions ---
+        if name in ("plot", "plotshape", "plotchar", "bgcolor", "barcolor", "hline"):
+            return None
+
         raise RuntimeError(f"Unknown function: {name!r}")
 
     # ------------------------------------------------------------------
@@ -233,23 +256,17 @@ class PineRuntime:
             return self._df[val]
         return self._df[col]
 
-    def _ta_sma(self, args: list, kw: dict) -> float:
+    def _ta_sma(self, args: list, kw: dict) -> pl.Series:
         assert self._df is not None
-        col = "close"
         period = args[1] if len(args) > 1 else kw.get("length", 20)
-        series = self._df[col]
-        if series.len() < period:
-            return 0.0
-        return series.tail(int(period)).mean()  # type: ignore[return-value]
+        series = self._df["close"]
+        return series.rolling_mean(window_size=int(period))
 
-    def _ta_ema(self, args: list, kw: dict) -> float:
+    def _ta_ema(self, args: list, kw: dict) -> pl.Series:
         assert self._df is not None
-        col = "close"
         period = args[1] if len(args) > 1 else kw.get("length", 20)
-        series = self._df[col]
-        if series.len() < period:
-            return 0.0
-        return series.ewm_mean(span=int(period))[-1]
+        series = self._df["close"]
+        return series.ewm_mean(span=int(period))
 
     def _ta_rsi(self, args: list, kw: dict) -> float:
         assert self._df is not None
@@ -275,22 +292,21 @@ class PineRuntime:
         return fast_ema - slow_ema
 
     def _ta_crossover(self, args: list) -> bool:
-        """True when first series crosses above second."""
-        assert self._df is not None and self._df.height >= 2
-        a_curr, b_curr = args[0], args[1]
-        # For scalar values from indicator calls on the current bar,
-        # we need previous bar values.  As a simplification we check
-        # the last two rows if the args are column names.
-        if isinstance(a_curr, (int, float)) and isinstance(b_curr, (int, float)):
-            # Cannot determine crossover from scalar values alone in a
-            # single evaluation; the caller should have stored series.
-            return False
-        return False  # conservative – extended in strategy context
+        """True when first series crosses above second on the current bar."""
+        a, b = args[0], args[1]
+        if isinstance(a, pl.Series) and isinstance(b, pl.Series):
+            if a.len() < 2 or b.len() < 2:
+                return False
+            return bool(a[-2] <= b[-2] and a[-1] > b[-1])
+        return False
 
     def _ta_crossunder(self, args: list) -> bool:
-        assert self._df is not None and self._df.height >= 2
-        if isinstance(args[0], (int, float)) and isinstance(args[1], (int, float)):
-            return False
+        """True when first series crosses below second on the current bar."""
+        a, b = args[0], args[1]
+        if isinstance(a, pl.Series) and isinstance(b, pl.Series):
+            if a.len() < 2 or b.len() < 2:
+                return False
+            return bool(a[-2] >= b[-2] and a[-1] < b[-1])
         return False
 
     # ------------------------------------------------------------------

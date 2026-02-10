@@ -1,0 +1,23 @@
+//@version=5
+strategy("SMA Crossover", overlay=true, default_qty_type=strategy.fixed, default_qty_value=1)
+
+fast_period = input.int(defval=9, title="Fast Period")
+slow_period = input.int(defval=21, title="Slow Period")
+order_size = input.int(defval=1, title="Order Size")
+
+fast_sma = ta.sma(close, fast_period)
+slow_sma = ta.sma(close, slow_period)
+
+longCondition = ta.crossover(fast_sma, slow_sma)
+shortCondition = ta.crossunder(fast_sma, slow_sma)
+
+if longCondition
+    strategy.entry("Long", strategy.long, qty=order_size)
+    strategy.close("Short")
+
+if shortCondition
+    strategy.entry("Short", strategy.short, qty=order_size)
+    strategy.close("Long")
+
+plot(fast_sma, color=color.blue, title="Fast SMA")
+plot(slow_sma, color=color.red, title="Slow SMA")
