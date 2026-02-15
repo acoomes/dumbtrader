@@ -1,0 +1,34 @@
+name: EMA Crossover 30/41
+description: >
+  Trend-following strategy using 30/41 EMA crossover on a 5-minute timeframe.
+  Backtesting on MNQ suggested these slower EMA lengths on 5-min bars filter
+  out more noise than the default 8/21 on 1-min bars, producing fewer but
+  higher-quality signals.
+
+inputs:
+  fast_period: 30
+  slow_period: 41
+  size: 1
+
+indicators:
+  fast_ema: { type: ema, period: $fast_period }
+  slow_ema: { type: ema, period: $slow_period }
+
+rules:
+  entry_long:
+    condition: crossover(fast_ema, slow_ema)
+    action: buy
+    size: $size
+
+  entry_short:
+    condition: crossunder(fast_ema, slow_ema)
+    action: sell
+    size: $size
+
+  exit_long:
+    condition: crossunder(fast_ema, slow_ema)
+    action: close_long
+
+  exit_short:
+    condition: crossover(fast_ema, slow_ema)
+    action: close_short

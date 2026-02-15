@@ -8,7 +8,7 @@ api:
 trading:
   mode: live           # "paper" or "live"
   instrument: MNQ
-  timeframe: 1min
+  timeframe: 5min
   max_position_size: 2
 
 strategy:
