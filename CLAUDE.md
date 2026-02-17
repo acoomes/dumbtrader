@@ -19,6 +19,13 @@ python -m dumbtrader
 # No test suite or linter is configured yet
 ```
 
+## Git Workflow
+
+- Do not make new feature/fix changes directly on `main`.
+- Before starting new changes, create and switch to a dedicated branch (for example: `codex/<short-task-name>`).
+- Keep `main` reserved for syncing from `origin/main`, hotfixes explicitly approved by the user, or merge results.
+- If already on `main` with uncommitted work, branch off before making further edits.
+
 ## Architecture
 
 The system follows an async event-driven loop:
