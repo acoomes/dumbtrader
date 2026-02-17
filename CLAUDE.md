@@ -22,7 +22,7 @@ python -m dumbtrader
 ## Git Workflow
 
 - Do not make new feature/fix changes directly on `main`.
-- Before starting new changes, create and switch to a dedicated branch (for example: `codex/<short-task-name>`).
+- Before starting new changes, create and switch to a dedicated branch named after the AI agent (for example: `claude/<short-task-name>`).
 - Keep `main` reserved for syncing from `origin/main`, hotfixes explicitly approved by the user, or merge results.
 - If already on `main` with uncommitted work, branch off before making further edits.
 
