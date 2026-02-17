@@ -360,7 +360,11 @@
     try {
       const res = await fetch('/api/status');
       const data = await res.json();
+      const wasRunning = running;
       setRunning(data.running);
+      if (wasRunning && !data.running) {
+        appendLog('[ui] bot is not running (it may have exited or failed to start)');
+      }
       if (data.config && Object.keys(data.config).length > 0) {
         _savedConfig = data.config;
         if (data.config.mode) setMode(data.config.mode);
@@ -370,6 +374,7 @@
     } catch {}
   }
   pollStatus();
+  setInterval(pollStatus, 2000);
 
   // Start / Stop
   async function startBot() {
@@ -394,10 +399,12 @@
         setRunning(true);
       } else {
         appendLog('[ui] error: ' + data.error);
+        setRunning(false);
         startBtn.disabled = false;
       }
     } catch (e) {
       appendLog('[ui] request failed: ' + e.message);
+      setRunning(false);
       startBtn.disabled = false;
     }
   }
@@ -432,6 +439,12 @@
   setInterval(pollMetrics, 10000);
 
   async function stopBot() {
+    if (!running) {
+      appendLog('[ui] bot is not currently running');
+      setRunning(false);
+      return;
+    }
+
     stopBtn.disabled = true;
     try {
       const res = await fetch('/api/stop', { method: 'POST' });
@@ -440,7 +453,12 @@
         setRunning(false);
       } else {
         appendLog('[ui] error: ' + data.error);
-        stopBtn.disabled = false;
+        if (res.status === 409) {
+          appendLog('[ui] bot is not currently running');
+          setRunning(false);
+        } else {
+          stopBtn.disabled = false;
+        }
       }
     } catch (e) {
       appendLog('[ui] request failed: ' + e.message);
