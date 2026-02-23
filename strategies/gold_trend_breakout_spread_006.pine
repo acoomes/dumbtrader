@@ -1,0 +1,57 @@
+//@version=5
+strategy("Gold Trend Breakout S006", overlay=true, default_qty_type=strategy.fixed, default_qty_value=1)
+
+// Designed for gold's tendency to trend in bursts after range expansion.
+// Best suited for liquid intraday bars (for example 5m or 15m).
+fastLen      = input.int(defval=21, title="Fast EMA Length", minval=1)
+slowLen      = input.int(defval=100, title="Slow EMA Length", minval=2)
+rsiLen       = input.int(defval=14, title="RSI Length", minval=2)
+qty          = input.int(defval=1, title="Order Size", minval=1)
+minSpreadPct = input.float(defval=0.06, title="Min EMA Spread %", minval=0.01)
+rsiLongMin   = input.int(defval=52, title="Long RSI Min")
+rsiShortMax  = input.int(defval=48, title="Short RSI Max")
+exitLongRsi  = input.int(defval=46, title="Long Exit RSI")
+exitShortRsi = input.int(defval=54, title="Short Exit RSI")
+
+fastEma = ta.ema(close, fastLen)
+slowEma = ta.ema(close, slowLen)
+rsiVal  = ta.rsi(close, rsiLen)
+
+trendUp   = fastEma > slowEma and close > slowEma
+trendDown = fastEma < slowEma and close < slowEma
+
+// Regime filter: only trade when EMA separation is meaningfully wide.
+spreadUpOk   = (fastEma - slowEma) > (close * minSpreadPct / 100)
+spreadDownOk = (slowEma - fastEma) > (close * minSpreadPct / 100)
+
+// Require break beyond prior bar + directional follow-through.
+breakLong  = close > high[1] and high[1] > high[2]
+breakShort = close < low[1] and low[1] < low[2]
+
+// Gold often whipsaws in compressed ranges; require some bar expansion.
+rangeNow  = high - low
+rangePrev = high[1] - low[1]
+expanding = rangeNow > (rangePrev * 0.8)
+
+longEntry  = trendUp and spreadUpOk and breakLong and expanding and rsiVal >= rsiLongMin
+shortEntry = trendDown and spreadDownOk and breakShort and expanding and rsiVal <= rsiShortMax
+
+if longEntry
+    strategy.entry("Long", strategy.long, qty=qty)
+    strategy.close("Short")
+
+if shortEntry
+    strategy.entry("Short", strategy.short, qty=qty)
+    strategy.close("Long")
+
+longExit  = close < fastEma or rsiVal < exitLongRsi
+shortExit = close > fastEma or rsiVal > exitShortRsi
+
+if longExit
+    strategy.close("Long")
+
+if shortExit
+    strategy.close("Short")
+
+plot(fastEma, "Fast EMA", color=color.blue, linewidth=2)
+plot(slowEma, "Slow EMA", color=color.orange, linewidth=2)

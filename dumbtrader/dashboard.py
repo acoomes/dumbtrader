@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sqlite3
 import sys
 import tempfile
@@ -109,9 +110,25 @@ async def api_start(body: dict[str, Any]) -> JSONResponse:
     instrument = body.get("instrument", "MNQ")
     strategy = body.get("strategy", "")
     mode = body.get("mode", "paper")
+    timeframe = str(body.get("timeframe", "5min")).strip() or "5min"
+    try:
+        max_position_size = int(body.get("max_position_size", 2))
+        flatten_on_stale = int(body.get("flatten_on_stale", 1))
+        stale_bar_seconds = int(body.get("stale_bar_seconds", 900))
+        position_sync_seconds = int(body.get("position_sync_seconds", 60))
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "invalid numeric dashboard settings"}, status_code=400)
 
     if mode not in ("paper", "live"):
         return JSONResponse({"error": "mode must be 'paper' or 'live'"}, status_code=400)
+    if max_position_size < 1:
+        return JSONResponse({"error": "max_position_size must be >= 1"}, status_code=400)
+    if stale_bar_seconds < 60:
+        return JSONResponse({"error": "stale_bar_seconds must be >= 60"}, status_code=400)
+    if position_sync_seconds < 5:
+        return JSONResponse({"error": "position_sync_seconds must be >= 5"}, status_code=400)
+    if flatten_on_stale not in (0, 1):
+        return JSONResponse({"error": "flatten_on_stale must be 0 or 1"}, status_code=400)
 
     # Build a temporary config based on the existing config.yaml
     if _BASE_CONFIG.exists():
@@ -126,6 +143,8 @@ async def api_start(body: dict[str, Any]) -> JSONResponse:
 
     cfg["trading"]["instrument"] = instrument
     cfg["trading"]["mode"] = mode
+    cfg["trading"]["timeframe"] = timeframe
+    cfg["trading"]["max_position_size"] = max_position_size
     if strategy:
         cfg["strategy"]["file"] = f"strategies/{strategy}"
 
@@ -136,7 +155,16 @@ async def api_start(body: dict[str, Any]) -> JSONResponse:
     yaml.safe_dump(cfg, tmp)
     tmp.close()
 
-    _current_config = {"instrument": instrument, "strategy": strategy, "mode": mode}
+    _current_config = {
+        "instrument": instrument,
+        "strategy": strategy,
+        "mode": mode,
+        "timeframe": timeframe,
+        "max_position_size": max_position_size,
+        "flatten_on_stale": flatten_on_stale,
+        "stale_bar_seconds": stale_bar_seconds,
+        "position_sync_seconds": position_sync_seconds,
+    }
     _session_start = datetime.now(timezone.utc).isoformat()
 
     # Build command
@@ -146,11 +174,17 @@ async def api_start(body: dict[str, Any]) -> JSONResponse:
 
     await _broadcast(f"[dashboard] starting: {' '.join(cmd)}")
 
+    child_env = os.environ.copy()
+    child_env["DUMBTRADER_FLATTEN_ON_STALE"] = str(flatten_on_stale)
+    child_env["DUMBTRADER_STALE_BAR_SECONDS"] = str(stale_bar_seconds)
+    child_env["DUMBTRADER_POSITION_SYNC_SECONDS"] = str(position_sync_seconds)
+
     _process = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=str(_PROJECT_ROOT),
+        env=child_env,
     )
 
     _reader_task = asyncio.create_task(_watch_process())
