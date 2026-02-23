@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -40,6 +41,11 @@ class Engine:
         self._running = False
         self._trade_store = TradeStore()
         self._net_position: int = 0  # positive = long, negative = short
+        self._last_position_sync_ts: float = 0.0
+        self._position_sync_seconds: float = float(os.getenv("DUMBTRADER_POSITION_SYNC_SECONDS", "60"))
+        self._stale_bar_seconds: float = float(os.getenv("DUMBTRADER_STALE_BAR_SECONDS", "900"))
+        self._flatten_on_stale: bool = os.getenv("DUMBTRADER_FLATTEN_ON_STALE", "0") == "1"
+        self._stale_guard_triggered: bool = False
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -112,6 +118,8 @@ class Engine:
             logger.info("No existing position")
 
         while self._running:
+            await self._sync_net_position_from_broker()
+
             # Fetch fresh bars from the standalone REST client on every
             # tick.  The TradingSuite WebSocket feed is broken (signalrcore
             # JSON parse error kills it on connect), so we bypass it.
@@ -130,12 +138,16 @@ class Engine:
                 continue
 
             last_row = df.row(-1, named=True)
+            last_ts = last_row.get("timestamp")
+            bar_age = self._bar_age_seconds(last_ts)
             logger.info(
-                "Tick  bars=%d  last_ts=%s  close=%s",
+                "Tick  bars=%d  last_ts=%s  bar_age_s=%s  close=%s",
                 df.height,
-                last_row.get("timestamp", "?"),
+                last_ts,
+                "?" if bar_age is None else round(bar_age, 1),
                 last_row.get("close", "?"),
             )
+            await self._enforce_stale_data_guard(bar_age)
 
             signals = self.strategy.on_bars(df)
             if signals:
@@ -153,6 +165,7 @@ class Engine:
 
     async def _handle_signal(self, signal: Signal) -> None:
         assert self._suite is not None
+        await self._sync_net_position_from_broker(force=True)
         ts = datetime.now(timezone.utc).isoformat()
         instrument = self.config.trading.instrument
         contract_id = self._suite.instrument_id or ""
@@ -389,6 +402,92 @@ class Engine:
             return (exit_price - entry_price) * size * tick_value_per_point
         else:  # CLOSE_SHORT
             return (entry_price - exit_price) * size * tick_value_per_point
+
+    async def _sync_net_position_from_broker(self, *, force: bool = False) -> None:
+        """Refresh local net-position from broker state to prevent drift."""
+        now = asyncio.get_running_loop().time()
+        if not force and (now - self._last_position_sync_ts) < self._position_sync_seconds:
+            return
+
+        pos = await self._get_open_position()
+        broker_net = pos.signed_size if pos is not None else 0
+        if broker_net != self._net_position:
+            logger.warning(
+                "Position sync drift detected: local=%d broker=%d; correcting local state",
+                self._net_position,
+                broker_net,
+            )
+            self._net_position = broker_net
+        self._last_position_sync_ts = now
+
+    async def _enforce_stale_data_guard(self, bar_age_seconds: float | None) -> None:
+        """Alert (and optionally flatten) if bars appear stale while position is open."""
+        if bar_age_seconds is None:
+            return
+
+        if bar_age_seconds <= self._stale_bar_seconds:
+            self._stale_guard_triggered = False
+            return
+
+        if self._stale_guard_triggered:
+            return
+        self._stale_guard_triggered = True
+
+        logger.error(
+            "Stale market data detected: age=%.1fs threshold=%.1fs net_position=%d",
+            bar_age_seconds,
+            self._stale_bar_seconds,
+            self._net_position,
+        )
+
+        if not self._flatten_on_stale or self._net_position == 0:
+            return
+
+        assert self._suite is not None
+        contract_id = self._suite.instrument_id or ""
+        instrument = self.config.trading.instrument
+
+        if self._net_position > 0:
+            await self._place_and_record(
+                contract_id=contract_id,
+                instrument=instrument,
+                signal_type="CLOSE_LONG",
+                side=1,
+                size=abs(self._net_position),
+                reason="stale data guard",
+                is_close=True,
+            )
+        elif self._net_position < 0:
+            await self._place_and_record(
+                contract_id=contract_id,
+                instrument=instrument,
+                signal_type="CLOSE_SHORT",
+                side=0,
+                size=abs(self._net_position),
+                reason="stale data guard",
+                is_close=True,
+            )
+
+    @staticmethod
+    def _bar_age_seconds(raw_ts: object) -> float | None:
+        """Return age in seconds of a bar timestamp, if parseable."""
+        if raw_ts is None:
+            return None
+
+        dt: datetime | None = None
+        if isinstance(raw_ts, datetime):
+            dt = raw_ts
+        elif isinstance(raw_ts, str):
+            try:
+                dt = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+        else:
+            return None
+
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds()
 
     @staticmethod
     def _parse_timeframe(tf: str) -> tuple[int, int]:

@@ -1,0 +1,39 @@
+//@version=5
+strategy("EMA Trend + RSI Guard", overlay=true, default_qty_type=strategy.fixed, default_qty_value=1)
+
+// Conservative defaults intended to reduce overtrading.
+fastLen      = input.int(defval=34, title="Fast EMA Length", minval=1)
+slowLen      = input.int(defval=89, title="Slow EMA Length", minval=1)
+qty          = input.int(defval=1, title="Order Size", minval=1)
+rsiLen       = input.int(defval=14, title="RSI Length", minval=2)
+rsiLongMin   = input.int(defval=55, title="Long RSI Min")
+rsiShortMax  = input.int(defval=45, title="Short RSI Max")
+exitLongRsi  = input.int(defval=48, title="Long Exit RSI")
+exitShortRsi = input.int(defval=52, title="Short Exit RSI")
+
+fastEma = ta.ema(close, fastLen)
+slowEma = ta.ema(close, slowLen)
+rsiVal  = ta.rsi(close, rsiLen)
+
+longEntry  = ta.crossover(fastEma, slowEma) and rsiVal >= rsiLongMin
+shortEntry = ta.crossunder(fastEma, slowEma) and rsiVal <= rsiShortMax
+
+if longEntry
+    strategy.entry("Long", strategy.long, qty=qty)
+    strategy.close("Short")
+
+if shortEntry
+    strategy.entry("Short", strategy.short, qty=qty)
+    strategy.close("Long")
+
+longExit  = fastEma < slowEma or rsiVal < exitLongRsi
+shortExit = fastEma > slowEma or rsiVal > exitShortRsi
+
+if longExit
+    strategy.close("Long")
+
+if shortExit
+    strategy.close("Short")
+
+plot(fastEma, "Fast EMA", color=color.blue, linewidth=2)
+plot(slowEma, "Slow EMA", color=color.orange, linewidth=2)

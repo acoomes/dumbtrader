@@ -60,7 +60,31 @@
     border-bottom: 1px solid var(--border);
     align-items: flex-end;
   }
+  .control-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+    background: rgba(22, 27, 34, 0.55);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .control-group-title {
+    width: 100%;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
   .field { display: flex; flex-direction: column; gap: 4px; }
+  .field.checkbox {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 9px;
+  }
   .field label {
     font-size: 12px;
     font-weight: 500;
@@ -77,6 +101,11 @@
     font-size: 14px;
     outline: none;
     min-width: 160px;
+  }
+  input[type="checkbox"] {
+    min-width: 0;
+    width: 16px;
+    height: 16px;
   }
   input:focus, select:focus { border-color: var(--accent); }
 
@@ -220,33 +249,71 @@
 </header>
 
 <div class="controls">
-  <div class="field">
-    <label>Contract</label>
-    <select id="instrument">
-      <option value="MNQ" selected>MNQ</option>
-      <option value="NQ">NQ</option>
-      <option value="MYM">MYM</option>
-      <option value="YM">YM</option>
-      <option value="MGC">MGC</option>
-      <option value="GC">GC</option>
-    </select>
-  </div>
-
-  <div class="field">
-    <label>Strategy</label>
-    <select id="strategy"></select>
-  </div>
-
-  <div class="field">
-    <label>Mode</label>
-    <div class="mode-toggle">
-      <button id="modePaper" class="active" onclick="setMode('paper')">Paper</button>
-      <button id="modeLive" onclick="setMode('live')">Live</button>
+  <div class="control-group">
+    <span class="control-group-title">Market</span>
+    <div class="field">
+      <label>Contract</label>
+      <select id="instrument">
+        <option value="MNQ" selected>MNQ</option>
+        <option value="NQ">NQ</option>
+        <option value="MYM">MYM</option>
+        <option value="YM">YM</option>
+        <option value="MGC">MGC</option>
+        <option value="GC">GC</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Timeframe</label>
+      <select id="timeframe">
+        <option value="1min">1min</option>
+        <option value="5min" selected>5min</option>
+        <option value="15min">15min</option>
+        <option value="30min">30min</option>
+        <option value="60min">60min</option>
+      </select>
     </div>
   </div>
 
-  <button class="btn btn-start" id="startBtn" onclick="startBot()">Start</button>
-  <button class="btn btn-stop" id="stopBtn" onclick="stopBot()" disabled>Stop</button>
+  <div class="control-group">
+    <span class="control-group-title">Strategy</span>
+    <div class="field">
+      <label>Strategy</label>
+      <select id="strategy"></select>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <span class="control-group-title">Risk & Reliability</span>
+    <div class="field">
+      <label>Max Position</label>
+      <input id="maxPositionSize" type="number" min="1" step="1" value="2" />
+    </div>
+    <div class="field">
+      <label>Stale Bar Sec</label>
+      <input id="staleBarSeconds" type="number" min="60" step="30" value="900" />
+    </div>
+    <div class="field">
+      <label>Position Sync Sec</label>
+      <input id="positionSyncSeconds" type="number" min="5" step="5" value="60" />
+    </div>
+    <div class="field checkbox">
+      <input id="flattenOnStale" type="checkbox" checked />
+      <label for="flattenOnStale">Flatten On Stale</label>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <span class="control-group-title">Mode & Actions</span>
+    <div class="field">
+      <label>Mode</label>
+      <div class="mode-toggle">
+        <button id="modePaper" class="active" onclick="setMode('paper')">Paper</button>
+        <button id="modeLive" onclick="setMode('live')">Live</button>
+      </div>
+    </div>
+    <button class="btn btn-start" id="startBtn" onclick="startBot()">Start</button>
+    <button class="btn btn-stop" id="stopBtn" onclick="stopBot()" disabled>Stop</button>
+  </div>
 </div>
 
 <div class="metrics-wrapper">
@@ -314,6 +381,11 @@
     statusLabel.textContent = r ? 'running' : 'stopped';
     document.getElementById('instrument').disabled = r;
     document.getElementById('strategy').disabled = r;
+    document.getElementById('timeframe').disabled = r;
+    document.getElementById('maxPositionSize').disabled = r;
+    document.getElementById('flattenOnStale').disabled = r;
+    document.getElementById('staleBarSeconds').disabled = r;
+    document.getElementById('positionSyncSeconds').disabled = r;
     document.getElementById('modePaper').disabled = r;
     document.getElementById('modeLive').disabled = r;
   }
@@ -370,6 +442,19 @@
         if (data.config.mode) setMode(data.config.mode);
         if (data.config.instrument) document.getElementById('instrument').value = data.config.instrument;
         if (data.config.strategy) document.getElementById('strategy').value = data.config.strategy;
+        if (data.config.timeframe) document.getElementById('timeframe').value = data.config.timeframe;
+        if (typeof data.config.max_position_size === 'number') {
+          document.getElementById('maxPositionSize').value = data.config.max_position_size;
+        }
+        if (typeof data.config.flatten_on_stale === 'number') {
+          document.getElementById('flattenOnStale').checked = data.config.flatten_on_stale === 1;
+        }
+        if (typeof data.config.stale_bar_seconds === 'number') {
+          document.getElementById('staleBarSeconds').value = data.config.stale_bar_seconds;
+        }
+        if (typeof data.config.position_sync_seconds === 'number') {
+          document.getElementById('positionSyncSeconds').value = data.config.position_sync_seconds;
+        }
       }
     } catch {}
   }
@@ -380,8 +465,25 @@
   async function startBot() {
     const instrument = document.getElementById('instrument').value.trim();
     const strategy = document.getElementById('strategy').value;
+    const timeframe = document.getElementById('timeframe').value;
+    const maxPositionSize = Number.parseInt(document.getElementById('maxPositionSize').value, 10);
+    const flattenOnStale = document.getElementById('flattenOnStale').checked ? 1 : 0;
+    const staleBarSeconds = Number.parseInt(document.getElementById('staleBarSeconds').value, 10);
+    const positionSyncSeconds = Number.parseInt(document.getElementById('positionSyncSeconds').value, 10);
     if (!instrument) { appendLog('[ui] enter a contract symbol'); return; }
     if (!strategy) { appendLog('[ui] select a strategy'); return; }
+    if (!Number.isFinite(maxPositionSize) || maxPositionSize < 1) {
+      appendLog('[ui] max position must be >= 1');
+      return;
+    }
+    if (!Number.isFinite(staleBarSeconds) || staleBarSeconds < 60) {
+      appendLog('[ui] stale bar sec must be >= 60');
+      return;
+    }
+    if (!Number.isFinite(positionSyncSeconds) || positionSyncSeconds < 5) {
+      appendLog('[ui] position sync sec must be >= 5');
+      return;
+    }
 
     if (mode === 'live') {
       if (!confirm('WARNING: You are about to trade with REAL money. Continue?')) return;
@@ -392,7 +494,16 @@
       const res = await fetch('/api/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instrument, strategy, mode }),
+        body: JSON.stringify({
+          instrument,
+          strategy,
+          mode,
+          timeframe,
+          max_position_size: maxPositionSize,
+          flatten_on_stale: flattenOnStale,
+          stale_bar_seconds: staleBarSeconds,
+          position_sync_seconds: positionSyncSeconds,
+        }),
       });
       const data = await res.json();
       if (res.ok) {
