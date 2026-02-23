@@ -258,21 +258,20 @@ class PineRuntime:
 
     def _ta_sma(self, args: list, kw: dict) -> pl.Series:
         assert self._df is not None
+        series = self._series(args[0]) if args else self._df["close"]
         period = args[1] if len(args) > 1 else kw.get("length", 20)
-        series = self._df["close"]
         return series.rolling_mean(window_size=int(period))
 
     def _ta_ema(self, args: list, kw: dict) -> pl.Series:
         assert self._df is not None
+        series = self._series(args[0]) if args else self._df["close"]
         period = args[1] if len(args) > 1 else kw.get("length", 20)
-        series = self._df["close"]
         return series.ewm_mean(span=int(period))
 
     def _ta_rsi(self, args: list, kw: dict) -> float:
         assert self._df is not None
-        col = "close"
+        series = self._series(args[0]) if args else self._df["close"]
         period = args[1] if len(args) > 1 else kw.get("length", 14)
-        series = self._df[col]
         diff = series.diff()
         gain = diff.clip(lower_bound=0).tail(int(period)).mean()
         loss = (-diff.clip(upper_bound=0)).tail(int(period)).mean()
