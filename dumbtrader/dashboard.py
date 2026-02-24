@@ -12,8 +12,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
+from project_x_py import ProjectX
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -23,6 +25,10 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _STRATEGIES_DIR = _PROJECT_ROOT / "strategies"
 _BASE_CONFIG = _PROJECT_ROOT / "config.yaml"
 _TRADES_DB = _PROJECT_ROOT / "trades.db"
+_ENV_FILE = _PROJECT_ROOT / ".env"
+
+if _ENV_FILE.exists():
+    load_dotenv(_ENV_FILE)
 
 # ---------------------------------------------------------------------------
 # App
@@ -100,6 +106,34 @@ async def api_strategies() -> list[str]:
     )
 
 
+@app.get("/api/accounts")
+async def api_accounts() -> JSONResponse:
+    username = os.getenv("PROJECT_X_USERNAME")
+    api_key = os.getenv("PROJECT_X_API_KEY")
+    if not username or not api_key:
+        return JSONResponse({"error": "ProjectX credentials are not configured"}, status_code=400)
+
+    client = ProjectX(username=username, api_key=api_key)
+    try:
+        await client.authenticate()
+        accounts = await client.list_accounts()
+        payload = [
+            {
+                "id": a.id,
+                "name": a.name,
+                "balance": a.balance,
+                "can_trade": a.canTrade,
+                "simulated": a.simulated,
+            }
+            for a in accounts
+        ]
+        return JSONResponse(payload)
+    except Exception as exc:
+        return JSONResponse({"error": f"failed to load accounts: {exc}"}, status_code=502)
+    finally:
+        await client.__aexit__(None, None, None)
+
+
 @app.post("/api/start")
 async def api_start(body: dict[str, Any]) -> JSONResponse:
     global _process, _reader_task, _current_config, _session_start
@@ -110,6 +144,8 @@ async def api_start(body: dict[str, Any]) -> JSONResponse:
     instrument = body.get("instrument", "MNQ")
     strategy = body.get("strategy", "")
     mode = body.get("mode", "paper")
+    account_name = str(body.get("account_name", "")).strip()
+    account_id = str(body.get("account_id", "")).strip()
     timeframe = str(body.get("timeframe", "5min")).strip() or "5min"
     try:
         max_position_size = int(body.get("max_position_size", 2))
@@ -156,6 +192,8 @@ async def api_start(body: dict[str, Any]) -> JSONResponse:
     tmp.close()
 
     _current_config = {
+        "account_name": account_name,
+        "account_id": account_id,
         "instrument": instrument,
         "strategy": strategy,
         "mode": mode,
@@ -178,6 +216,10 @@ async def api_start(body: dict[str, Any]) -> JSONResponse:
     child_env["DUMBTRADER_FLATTEN_ON_STALE"] = str(flatten_on_stale)
     child_env["DUMBTRADER_STALE_BAR_SECONDS"] = str(stale_bar_seconds)
     child_env["DUMBTRADER_POSITION_SYNC_SECONDS"] = str(position_sync_seconds)
+    if account_name:
+        child_env["PROJECT_X_ACCOUNT_NAME"] = account_name
+    else:
+        child_env.pop("PROJECT_X_ACCOUNT_NAME", None)
 
     _process = await asyncio.create_subprocess_exec(
         *cmd,

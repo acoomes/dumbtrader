@@ -68,6 +68,7 @@ class Engine:
         self._rest = ProjectX(
             username=self.config.api.username,
             api_key=self.config.api.api_key,
+            account_name=os.getenv("PROJECT_X_ACCOUNT_NAME"),
         )
         await self._rest.authenticate()
         self._rest.cache_ttl = 0.0  # disable SDK cache; we need fresh bars each tick

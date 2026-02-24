@@ -252,6 +252,12 @@
   <div class="control-group">
     <span class="control-group-title">Market</span>
     <div class="field">
+      <label>Account</label>
+      <select id="account">
+        <option value="">Loading accounts...</option>
+      </select>
+    </div>
+    <div class="field">
       <label>Contract</label>
       <select id="instrument">
         <option value="MNQ" selected>MNQ</option>
@@ -379,6 +385,7 @@
     stopBtn.disabled = !r;
     statusDot.classList.toggle('running', r);
     statusLabel.textContent = r ? 'running' : 'stopped';
+    document.getElementById('account').disabled = r;
     document.getElementById('instrument').disabled = r;
     document.getElementById('strategy').disabled = r;
     document.getElementById('timeframe').disabled = r;
@@ -405,6 +412,40 @@
     ws.onclose = () => setTimeout(connectWs, 2000);
   }
   connectWs();
+
+  // Load accounts
+  async function loadAccounts() {
+    const sel = document.getElementById('account');
+    try {
+      const res = await fetch('/api/accounts');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'failed to load accounts');
+
+      sel.innerHTML = '';
+      for (const acc of data) {
+        const opt = document.createElement('option');
+        opt.value = acc.name;
+        opt.dataset.accountId = String(acc.id);
+        const bal = Number.isFinite(acc.balance) ? acc.balance.toFixed(2) : '0.00';
+        const kind = acc.simulated ? 'sim' : 'live';
+        opt.textContent = `${acc.name} | $${bal} | id ${acc.id} | ${kind}`;
+        sel.appendChild(opt);
+      }
+
+      if (sel.options.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'No accounts found';
+        sel.appendChild(opt);
+      }
+
+      if (_savedConfig.account_name) sel.value = _savedConfig.account_name;
+    } catch (e) {
+      sel.innerHTML = '<option value=\"\">Failed to load accounts</option>';
+      appendLog('[ui] failed to load accounts: ' + e.message);
+    }
+  }
+  loadAccounts();
 
   // Load strategies
   async function loadStrategies() {
@@ -440,6 +481,7 @@
       if (data.config && Object.keys(data.config).length > 0) {
         _savedConfig = data.config;
         if (data.config.mode) setMode(data.config.mode);
+        if (data.config.account_name) document.getElementById('account').value = data.config.account_name;
         if (data.config.instrument) document.getElementById('instrument').value = data.config.instrument;
         if (data.config.strategy) document.getElementById('strategy').value = data.config.strategy;
         if (data.config.timeframe) document.getElementById('timeframe').value = data.config.timeframe;
@@ -463,6 +505,9 @@
 
   // Start / Stop
   async function startBot() {
+    const accountSel = document.getElementById('account');
+    const account_name = accountSel.value;
+    const account_id = accountSel.options[accountSel.selectedIndex]?.dataset.accountId || '';
     const instrument = document.getElementById('instrument').value.trim();
     const strategy = document.getElementById('strategy').value;
     const timeframe = document.getElementById('timeframe').value;
@@ -472,6 +517,7 @@
     const positionSyncSeconds = Number.parseInt(document.getElementById('positionSyncSeconds').value, 10);
     if (!instrument) { appendLog('[ui] enter a contract symbol'); return; }
     if (!strategy) { appendLog('[ui] select a strategy'); return; }
+    if (!account_name) { appendLog('[ui] select an account'); return; }
     if (!Number.isFinite(maxPositionSize) || maxPositionSize < 1) {
       appendLog('[ui] max position must be >= 1');
       return;
@@ -495,6 +541,8 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          account_name,
+          account_id,
           instrument,
           strategy,
           mode,
