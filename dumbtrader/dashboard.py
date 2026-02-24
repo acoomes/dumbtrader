@@ -39,6 +39,14 @@ _current_config: dict[str, Any] = {}
 _session_start: str | None = None  # ISO 8601 UTC timestamp when bot was started
 
 
+def _should_suppress_dashboard_log(line: str) -> bool:
+    """Hide noisy SignalR connection warnings in dashboard output only."""
+    lower = line.lower()
+    if "signalrcoreclient" not in lower:
+        return False
+    return "warning" in lower and "connection closed" in lower
+
+
 async def _broadcast(line: str) -> None:
     """Send a log line to every connected WebSocket client."""
     dead: list[WebSocket] = []
@@ -58,6 +66,8 @@ async def _read_stream(stream: asyncio.StreamReader) -> None:
         if not raw:
             break
         line = raw.decode("utf-8", errors="replace").rstrip("\n").rstrip("\r")
+        if _should_suppress_dashboard_log(line):
+            continue
         await _broadcast(line)
 
 
