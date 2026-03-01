@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import sys
 from pathlib import Path
@@ -41,6 +42,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip interactive live-trading confirmation (use when launched by the dashboard)",
     )
     p.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Enable DEBUG logging (also: DUMBTRADER_DEBUG=1 env var)",
+    )
+    p.add_argument(
         "--dashboard",
         action="store_true",
         default=False,
@@ -68,6 +75,12 @@ def _load_strategy(strategy_path: Path):
     raise ValueError(f"Unsupported strategy file type: {ext!r}")
 
 
+def _suppress_noisy_loggers() -> None:
+    """Set SignalR/WebSocket loggers to ERROR to silence connection spam."""
+    for name in ("signalrcore", "websockets", "websocket"):
+        logging.getLogger(name).setLevel(logging.ERROR)
+
+
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
@@ -78,24 +91,29 @@ def main() -> None:
             if hasattr(stream, "reconfigure"):
                 stream.reconfigure(encoding="utf-8", errors="replace")
 
+    debug_mode = args.debug or os.getenv("DUMBTRADER_DEBUG") == "1"
+    log_level = logging.DEBUG if debug_mode else logging.INFO
+
     # Dashboard mode — launch web UI instead of running the bot directly
     if args.dashboard:
         import uvicorn
         from dumbtrader.dashboard import app as dashboard_app
 
         logging.basicConfig(
-            level=logging.INFO,
+            level=log_level,
             format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         )
+        _suppress_noisy_loggers()
         logger = logging.getLogger("dumbtrader")
         logger.info("Starting dashboard on http://localhost:%d", args.port)
         uvicorn.run(dashboard_app, host="0.0.0.0", port=args.port, log_level="info")
         return
 
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
+    _suppress_noisy_loggers()
     logger = logging.getLogger("dumbtrader")
 
     # Load config

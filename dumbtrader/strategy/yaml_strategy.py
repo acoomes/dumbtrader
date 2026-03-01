@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,8 @@ import yaml
 
 from dumbtrader.indicators import compute_indicator
 from dumbtrader.strategy.base import Signal, SignalType, Strategy
+
+_logger = logging.getLogger("dumbtrader.strategy.yaml")
 
 _ACTION_MAP: dict[str, SignalType] = {
     "buy": SignalType.BUY,
@@ -127,13 +130,37 @@ class YamlStrategy(Strategy):
     def on_bars(self, df: pl.DataFrame) -> list[Signal]:
         df = self._compute_indicators(df)
 
+        if _logger.isEnabledFor(logging.DEBUG) and df.height >= 1:
+            indicator_cols = list(self._indicators.keys())
+            log_cols = [c for c in ["timestamp", "close"] + indicator_cols if c in df.columns]
+            for i in (-2, -1):
+                if df.height >= abs(i):
+                    row = df.row(i, named=True)
+                    vals = "  ".join(f"{c}={row[c]}" for c in log_cols)
+                    _logger.debug("IndicatorBar[%d]: %s", i, vals)
+
         signals: list[Signal] = []
         for rule_name, rule in self._raw_rules.items():
             cond = rule["condition"]
-            if self._eval_condition(cond, df):
+            result = self._eval_condition(cond, df)
+            if result:
                 action = _ACTION_MAP.get(rule["action"])
                 if action is None:
                     raise ValueError(f"Unknown action in rule {rule_name!r}: {rule['action']!r}")
                 size = self._resolve_value(rule.get("size", 1))
                 signals.append(Signal(type=action, size=int(size), reason=rule_name))
+            elif _logger.isEnabledFor(logging.DEBUG):
+                col_names = re.findall(r'\b([A-Za-z_]\w*)\b', cond)
+                col_names = [c for c in col_names if c not in {"crossover", "crossunder"}]
+                last = df.row(-1, named=True)
+                prev = df.row(-2, named=True) if df.height >= 2 else {}
+                vals = "  ".join(
+                    f"{c}=[{prev.get(c, '?')}, {last.get(c, '?')}]"
+                    for c in col_names
+                    if c in df.columns
+                )
+                _logger.debug(
+                    "Rule %r not triggered: condition=%r  values: %s",
+                    rule_name, cond, vals or "(none)",
+                )
         return signals
