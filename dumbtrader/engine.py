@@ -150,12 +150,40 @@ class Engine:
             )
             await self._enforce_stale_data_guard(bar_age)
 
-            signals = self.strategy.on_bars(df)
+            # Drop the currently-forming (open) bar so strategies only
+            # evaluate on confirmed closed bars, avoiding phantom signals
+            # that could "uncross" before the bar closes.
+            closed_df = df.slice(0, df.height - 1)
+            if closed_df.height == 0:
+                logger.debug("Not enough bars for evaluation yet")
+                await asyncio.sleep(1)
+                continue
+
+            last_closed = closed_df.row(-1, named=True)
+            logger.info(
+                "Evaluating on %d closed bars  last_closed_ts=%s",
+                closed_df.height,
+                last_closed.get("timestamp", "?"),
+            )
+
+            if logger.isEnabledFor(logging.DEBUG):
+                ohlcv_cols = ["timestamp", "open", "high", "low", "close", "volume"]
+                for i in (-2, -1):
+                    if closed_df.height >= abs(i):
+                        row = closed_df.row(i, named=True)
+                        vals = "  ".join(
+                            f"{c}={row[c]}"
+                            for c in ohlcv_cols
+                            if c in row
+                        )
+                        logger.debug("ClosedBar[%d]: %s", i, vals)
+
+            signals = self.strategy.on_bars(closed_df)
             if signals:
                 for sig in signals:
                     await self._handle_signal(sig)
             else:
-                logger.info("No signals")
+                logger.info("No signals  close=%s", last_closed.get("close", "?"))
 
             # Wait roughly one bar interval before re-evaluating
             await asyncio.sleep(self._sleep_seconds())
