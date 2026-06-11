@@ -20,7 +20,11 @@ from dumbtrader.agentic.guardrails import (
 from dumbtrader.agentic.ledger import Decision, LoopLedger, Rollout
 from dumbtrader.agentic.objective import ClosedTrade, score_rollout
 from dumbtrader.agentic.playbook import SizingRule, load_playbook
-from dumbtrader.agentic.rollout import MarketSnapshot, propose_weekly
+from dumbtrader.agentic.rollout import (
+    MarketSnapshot,
+    execute_confirmed,
+    propose_weekly,
+)
 
 _V0 = Path(__file__).resolve().parents[1] / "agentic" / "playbook" / "v0.md"
 
@@ -163,6 +167,56 @@ def test_propose_weekly_exits_when_below_sma():
         pb, snaps, equity=230.0, iteration=2, regime="chop", open_positions=1
     )
     assert any(d.action == "CLOSE" and d.symbol == "AAPL" for d in decisions)
+
+
+def test_propose_weekly_exits_on_stop_even_when_above_sma():
+    # Held position still above its SMA but down >10% from entry -> the stop
+    # exit (loss cap) must fire; otherwise we'd hold past the stated cap.
+    pb = load_playbook(_V0)  # exit.stop_pct == 0.10
+    snaps = [
+        MarketSnapshot("AAPL", price=180, sma=170, momentum=0.01,
+                       held_shares=1.0, entry_price=205.0),  # -12% from entry
+    ]
+    decisions = propose_weekly(
+        pb, snaps, equity=230.0, iteration=4, regime="chop", open_positions=1
+    )
+    closes = [d for d in decisions if d.action == "CLOSE" and d.symbol == "AAPL"]
+    assert len(closes) == 1
+    assert "stop" in closes[0].rationale
+
+
+def test_propose_weekly_holds_position_within_stop_and_above_sma():
+    pb = load_playbook(_V0)
+    snaps = [
+        MarketSnapshot("AAPL", price=200, sma=170, momentum=0.01,
+                       held_shares=1.0, entry_price=205.0),  # only -2.4%
+    ]
+    decisions = propose_weekly(
+        pb, snaps, equity=230.0, iteration=5, regime="bull", open_positions=1
+    )
+    assert all(d.action != "CLOSE" for d in decisions)
+
+
+def test_execute_confirmed_declined_counts_as_override():
+    pb = load_playbook(_V0)
+    snaps = [MarketSnapshot("NVDA", price=135, sma=120, momentum=0.18)]
+    decisions = propose_weekly(pb, snaps, equity=230.0, iteration=1, regime="bull")
+    assert decisions
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ledger = LoopLedger(Path(tmp) / "loop.db")
+        try:
+            results = execute_confirmed(
+                decisions, ledger=ledger,
+                confirm=lambda d: False,  # operator declines at the gate
+                execute=lambda d: pytest.fail("must not execute a declined order"),
+            )
+            assert results[0].status == "rejected"
+            assert results[0].followed_policy == 0
+            # The adherence audit must reflect the decline, not report 100%.
+            assert ledger.adherence(1) == 0.0
+        finally:
+            ledger.close()
 
 
 def test_propose_weekly_holds_when_nothing_eligible():

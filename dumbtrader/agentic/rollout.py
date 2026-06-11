@@ -46,6 +46,7 @@ class MarketSnapshot:
     sma: float  # trend filter, e.g. 20-week SMA
     momentum: float  # ranking signal, e.g. 12-week return (fraction)
     held_shares: float = 0.0  # currently held (for exit evaluation)
+    entry_price: float | None = None  # cost basis of a held position (for the stop)
 
 
 class Executor(Protocol):
@@ -76,7 +77,9 @@ def propose_weekly(
     """Apply the v0 systematic-swing rules to produce proposed decisions.
 
     v0 rules (deliberately dumb, explicit, falsifiable):
-      - **Exit:** close any held name whose price has closed below its SMA.
+      - **Exit:** close any held name whose price has closed below its SMA OR
+        breached the ``exit.stop_pct`` stop from its entry price (the playbook
+        exit rule is "below-SMA OR -10% stop, whichever comes first").
       - **Entry:** among names with price > SMA and momentum > 0, take the
         highest-momentum name, sized by the risk-fraction rule, up to the
         max-positions cap.
@@ -86,28 +89,52 @@ def propose_weekly(
     sizer = PositionSizer(playbook.sizing)
     decisions: list[Decision] = []
     held_after = open_positions
+    stop_pct = float(playbook.exit.get("stop_pct", 0.0))
 
     # 1) Exits first (free up the position cap before considering entries).
     for snap in snapshots:
-        if snap.held_shares > 0 and snap.price < snap.sma:
-            decisions.append(
-                Decision(
-                    iteration=iteration,
-                    policy_version=playbook.version,
-                    timestamp=_now(),
-                    symbol=snap.symbol,
-                    action="CLOSE",
-                    proposed_shares=snap.held_shares,
-                    proposed_notional=snap.held_shares * snap.price,
-                    rationale=(
-                        f"exit: price {snap.price:.2f} < SMA {snap.sma:.2f} "
-                        f"(trend filter broken)"
-                    ),
-                    regime=regime,
-                    status=PROPOSED,
-                )
+        if snap.held_shares <= 0:
+            continue
+        below_sma = snap.price < snap.sma
+        stop_hit = (
+            stop_pct > 0
+            and snap.entry_price is not None
+            and snap.price <= snap.entry_price * (1 - stop_pct)
+        )
+        if not (below_sma or stop_hit):
+            continue
+
+        if stop_hit and not below_sma:
+            reason = (
+                f"exit: price {snap.price:.2f} hit -{stop_pct:.0%} stop from "
+                f"entry {snap.entry_price:.2f} (loss cap)"
             )
-            held_after -= 1
+        elif below_sma and stop_hit:
+            reason = (
+                f"exit: price {snap.price:.2f} < SMA {snap.sma:.2f} and below "
+                f"-{stop_pct:.0%} stop"
+            )
+        else:
+            reason = (
+                f"exit: price {snap.price:.2f} < SMA {snap.sma:.2f} "
+                f"(trend filter broken)"
+            )
+
+        decisions.append(
+            Decision(
+                iteration=iteration,
+                policy_version=playbook.version,
+                timestamp=_now(),
+                symbol=snap.symbol,
+                action="CLOSE",
+                proposed_shares=snap.held_shares,
+                proposed_notional=snap.held_shares * snap.price,
+                rationale=reason,
+                regime=regime,
+                status=PROPOSED,
+            )
+        )
+        held_after -= 1
 
     # 2) Entries: rank eligible names by momentum, take the strongest until the
     #    position cap is full.
@@ -157,8 +184,9 @@ def execute_confirmed(
 
     For each decision: record it (proposed), ask ``confirm``; if approved,
     mark confirmed and call ``execute`` to place the order, recording the fill;
-    if declined, mark it rejected/skipped.  Every outcome is persisted so the
-    reflection scores the policy *as actually run*.
+    if declined, mark it rejected AND flag it as an override (declining the
+    policy's proposal is a deviation from the policy as written).  Every
+    outcome is persisted so the reflection scores the policy *as actually run*.
     """
     results: list[Decision] = []
     for d in decisions:
@@ -166,9 +194,17 @@ def execute_confirmed(
 
         approved = confirm(d)
         if not approved:
-            ledger.update_decision(d.id, status=REJECTED)
+            # Declining a proposal IS a deviation from the policy as written:
+            # record it as an override so the adherence audit reflects the
+            # policy *as actually run*, not 100% by default.
+            override = "declined at human gate"
+            ledger.update_decision(
+                d.id, status=REJECTED, followed_policy=0, override_reason=override
+            )
             d.status = REJECTED
-            logger.info("Skipped (not confirmed): %s %s", d.action, d.symbol)
+            d.followed_policy = 0
+            d.override_reason = override
+            logger.info("Declined (override): %s %s", d.action, d.symbol)
             results.append(d)
             continue
 

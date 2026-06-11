@@ -86,17 +86,6 @@ def cmd_propose(args: argparse.Namespace) -> int:
     ledger = LoopLedger()
     try:
         iteration = ledger.latest_iteration() + 1
-        rollout = Rollout(
-            iteration=iteration,
-            policy_version=pb.version,
-            started_at=datetime.now(timezone.utc).isoformat(),
-            window_label=raw.get("window_label", f"iter-{iteration}"),
-            benchmark=pb.benchmark,
-            equity_start=equity,
-            regime=regime,
-        )
-        ledger.start_rollout(rollout)
-
         decisions = propose_weekly(
             pb, snapshots, equity=equity, iteration=iteration,
             regime=regime, open_positions=open_positions,
@@ -106,20 +95,34 @@ def cmd_propose(args: argparse.Namespace) -> int:
             return 0
 
         print(f"\n{len(decisions)} proposed decision(s) for iteration {iteration}:")
-        confirm = (lambda d: True) if args.yes else _interactive_confirm
-        if args.execute:
-            results = execute_confirmed(
-                decisions, ledger=ledger, confirm=confirm,
-                execute=_dry_run_executor,
-            )
-            placed = sum(1 for d in results if d.status == "executed")
-            print(f"\n{placed}/{len(results)} executed (dry-run fills recorded).")
-        else:
+
+        if not args.execute:
+            # Dry preview: do NOT persist a rollout or advance the iteration
+            # counter — only `--execute` commits state through the human gate.
             for d in decisions:
                 print(f"  - {d.action} {d.proposed_shares:.4f} {d.symbol} "
                       f"(~${d.proposed_notional:.2f}): {d.rationale}")
-            print("\n(dry preview — re-run with --execute to record under the "
-                  "human gate)")
+            print("\n(dry preview — nothing persisted; re-run with --execute to "
+                  "record under the human gate)")
+            return 0
+
+        # Execute path: persist the rollout, then drive decisions through the gate.
+        ledger.start_rollout(Rollout(
+            iteration=iteration,
+            policy_version=pb.version,
+            started_at=datetime.now(timezone.utc).isoformat(),
+            window_label=raw.get("window_label", f"iter-{iteration}"),
+            benchmark=pb.benchmark,
+            equity_start=equity,
+            regime=regime,
+        ))
+        confirm = (lambda d: True) if args.yes else _interactive_confirm
+        results = execute_confirmed(
+            decisions, ledger=ledger, confirm=confirm,
+            execute=_dry_run_executor,
+        )
+        placed = sum(1 for d in results if d.status == "executed")
+        print(f"\n{placed}/{len(results)} executed (dry-run fills recorded).")
     finally:
         ledger.close()
     return 0
