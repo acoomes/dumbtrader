@@ -8,6 +8,9 @@ dumbtrader_*.yaml
 trades.db
 trades.db-wal
 trades.db-shm
+agentic_loop.db
+agentic_loop.db-wal
+agentic_loop.db-shm
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

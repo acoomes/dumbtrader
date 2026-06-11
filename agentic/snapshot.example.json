@@ -1,0 +1,12 @@
+{
+  "window_label": "2026-W24",
+  "equity": 230.00,
+  "regime": "melt-up",
+  "symbols": [
+    {"symbol": "AAPL",  "price": 212.50, "sma": 205.00, "momentum": 0.06, "held_shares": 0.0},
+    {"symbol": "MSFT",  "price": 470.00, "sma": 445.00, "momentum": 0.11, "held_shares": 0.0},
+    {"symbol": "NVDA",  "price": 135.00, "sma": 120.00, "momentum": 0.18, "held_shares": 0.0},
+    {"symbol": "AMZN",  "price": 198.00, "sma": 190.00, "momentum": 0.04, "held_shares": 0.0},
+    {"symbol": "GOOGL", "price": 178.00, "sma": 182.00, "momentum": -0.02, "held_shares": 0.0}
+  ]
+}
